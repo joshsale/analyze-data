@@ -31,8 +31,6 @@ while (str ~= -1)
     str = fgetl(fid);
 end
 
-% data.t=datetime(uwbdata.t, 'ConvertFrom', 'posixtime');
-
 % Plot raw pulson x vs. y position
 figure(1)
 plot(uwbdata.x,uwbdata.y)
@@ -43,6 +41,7 @@ ylabel('Y (mm)')
 hold off
 
 uwbdata.t=uwbdata.t-8*3600; % Converts UWB time to UTC
+t = datetime(uwbdata.t, 'ConvertFrom', 'posixtime'); %Convert time to datetime format
 
 %Plot pulson t vs. position
 figure(2)
@@ -71,7 +70,7 @@ hold off
 xdata=uwbdata.x-uwbdata.x(1);
 ydata=uwbdata.y-uwbdata.y(1);
 zdata=uwbdata.z-uwbdata.z(1);
-t = datetime(uwbdata.t, 'ConvertFrom', 'posixtime')
+
 
 %% Import and plot data run from VICON
 
@@ -84,15 +83,9 @@ vic_z=-ans.Data(:,4).*1000;
 
 vic_x1=vic_x-vic_x(1);
 vic_y1=vic_y-vic_y(1);
+vic_t1 = datetime(vic_t, 'ConvertFrom', 'posixtime');
 
-mx=mean(vic_x);
-my=mean(vic_y);
-mz=mean(vic_z);
-stdx=std(vic_x);
-stdy=std(vic_y);
-stdz=std(vic_z);
-
-% Plot Vicon x vs. y position data
+%% Plot Vicon x vs. y position data
 figure(3)
 plot(vic_x,vic_y)
 hold on
@@ -101,16 +94,17 @@ hold on
 xlabel('X (mm)')
 ylabel('Y (mm)')
 
-% Plot uwb & vicon t vs x data
+%% Plot uwb & vicon t vs x data
 figure(4)
 plot(uwbdata.t,xdata,'b-')
 hold on
 plot(vic_t,vic_x1,'r-')
-title('Vicon T vs. X')
+title('T vs. X')
 xlabel('T')
 ylabel('X')
+legend('PulsOn Data', 'VICON Data','Location','southeast');
 
-%Plot pulson t vs. position
+%% Plot pulson t vs. position
 figure(5)
 subplot(3,1,1)
 plot(vic_t,vic_x)
@@ -133,7 +127,7 @@ ylabel('Z')
 % datetick('x',13,'keeplimits');
 hold off
 
-% Plot Vicon & UWB x vs. y position data on same axes
+%% Plot Vicon & UWB x vs. y position data on same axes
 figure(6)
 plot(vic_x,vic_y,'r-')
 hold on
@@ -145,9 +139,9 @@ xlabel('X (mm)')
 ylabel('Y (mm)')
 hold off
 
-% Translate and rotate vicon data to overlay on UWB data
-psi=tan((xdata(1000)-xdata(1))/ydata(1000)-ydata(1));
-R=[cos(psi) -sin(psi);sin(psi) cos(psi)];
+%% Translate and rotate vicon data to overlay on UWB data
+psi=90; %tan((xdata(1000)-xdata(1))/ydata(1000)-ydata(1));
+R=[cosd(psi) -sind(psi);sind(psi) cosd(psi)];
 vic_rot=(R*[vic_x1'; vic_y1'])';
 vic_rotx=vic_rot(:,1);
 vic_roty=vic_rot(:,2);
@@ -157,7 +151,96 @@ figure(7)
 plot(vic_rotx,vic_roty,'r-')
 hold on
 title('2-D Location')
-plot(xdata,ydata,'b-')
+plot(xdata,-ydata,'b-')
 legend('Vicon Data', 'PulsON Data','Location','southeast');
 xlabel('X (mm)')
 ylabel('Y (mm)')
+
+% Develop subplot with time vs. x and y position to evaluate error between
+% UWB & Vicon position data
+
+figure(8)
+subplot(2,1,1)
+plot(uwbdata.t,xdata,'b-')
+hold on
+plot(vic_t,vic_rotx,'r-')
+title('T vs. X')
+xlabel('T')
+ylabel('X')
+legend('PulsOn Data', 'VICON Data','Location','southeast');
+subplot(2,1,2)
+plot(uwbdata.t,-ydata,'b-')
+hold on
+plot(vic_t,vic_roty,'r-')
+title('T vs. Y')
+xlabel('T')
+ylabel('Y')
+legend('PulsOn Data', 'VICON Data','Location','northeast');
+
+for i=1:length(vic_t)
+    ind(i)=vic_t(i)>max(uwbdata.t) || vic_t(i)<min(uwbdata.t);
+end
+
+x_vic_int = vic_rotx(~ind);
+y_vic_int = vic_roty(~ind);
+t_vic_int = vic_t(~ind);
+
+% Develop subplot with time vs. interpolated x and y position to evaluate error between
+% UWB & Vicon position data
+
+figure(9)
+subplot(2,1,1)
+plot(uwbdata.t,xdata,'b-')
+hold on
+plot(t_vic_int,x_vic_int,'r-')
+title('Interpolated T vs. X')
+xlabel('T')
+ylabel('X')
+legend('PulsOn Data', 'VICON Data','Location','southeast');
+subplot(2,1,2)
+plot(uwbdata.t,-ydata,'b-')
+hold on
+plot(t_vic_int,y_vic_int,'r-')
+title('Interpolated T vs. Y')
+xlabel('T')
+ylabel('Y')
+legend('PulsOn Data', 'VICON Data','Location','northeast');
+
+%% Calculate closed form solution
+% p=[vic_x;vic_y;vic_z];
+% p_hat=[uwbdata.x;uwbdata.y;uwbdata.z];
+% 
+% mu_p=mean(p);
+% mu_phat=mean(p_hat);
+
+vic_mu_x=mean(vic_x);
+vic_mu_y=mean(vic_y);
+vic_mu_z=mean(vic_z);
+vic_var_x=var(vic_x);
+vic_var_y=var(vic_y);
+vic_var_z=var(vic_z);
+
+uwb_mu_x=mean(uwbdata.x);
+uwb_mu_y=mean(uwbdata.y);
+uwb_mu_z=mean(uwbdata.z);
+uwb_var_x=var(uwbdata.x);
+uwb_var_y=var(uwbdata.y);
+uwb_var_z=var(uwbdata.z);
+
+N=length(uwb_mu_x);
+for i = 1:N;
+    Sig(i)=(vic_x(i)-vic_mu_x)*(uwbdata.x(i)-uwb_mu_x)';
+end
+Sigma=sum(Sig);
+
+[U,D,V] = svd(Sigma);
+
+if det(U)*det(V)<0;
+    W=diag(1,1,-1);
+else
+    W=eye(3);
+end
+
+R=U*W*V';
+s=(1/uwb_var_x)*trace(D*W);
+t=vic_mu_x-s*R*uwb_mu_x;
